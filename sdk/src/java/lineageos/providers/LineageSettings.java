@@ -2036,15 +2036,6 @@ public final class LineageSettings {
         public static final Validator ENABLE_TASKBAR_VALIDATOR =
                 sBooleanValidator;
 
-        /**
-         * Whether to enable fingerprint wake-and-unlock.
-         */
-        public static final String FINGERPRINT_WAKE_UNLOCK = "fingerprint_wake_unlock";
-
-        /** @hide */
-        public static final Validator FINGERPRINT_WAKE_UNLOCK_VALIDATOR =
-                sNonNegativeIntegerValidator;
-
         /*
          * Swipe to screenshot
          * @hide
@@ -2318,7 +2309,6 @@ public final class LineageSettings {
                     CLICK_PARTIAL_SCREENSHOT_VALIDATOR);
             VALIDATORS.put(ENABLE_TASKBAR,
                     ENABLE_TASKBAR_VALIDATOR);
-            VALIDATORS.put(FINGERPRINT_WAKE_UNLOCK,
                     FINGERPRINT_WAKE_UNLOCK_VALIDATOR);
             VALIDATORS.put(SWIPE_TO_SCREENSHOT, SWIPE_TO_SCREENSHOT_VALIDATOR);
             VALIDATORS.put(__MAGICAL_TEST_PASSING_ENABLER,
