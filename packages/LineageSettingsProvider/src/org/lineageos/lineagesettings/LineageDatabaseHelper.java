@@ -1,6 +1,6 @@
 /**
  * Copyright (C) 2015-2016 The CyanogenMod Project
- *               2017-2022 The LineageOS Project
+ *               2017-2023 The LineageOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,11 +43,10 @@ import android.util.Log;
 
 import lineageos.providers.LineageSettings;
 
-import org.lineageos.internal.util.FileUtils;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -60,9 +59,7 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
     private static final boolean LOCAL_LOGV = false;
 
     private static final String DATABASE_NAME = "lineagesettings.db";
-    private static final int DATABASE_VERSION = 18;
-
-    private static final String DATABASE_NAME_OLD = "cmsettings.db";
+    private static final int DATABASE_VERSION = 19;
 
     public static class LineageTableNames {
         public static final String TABLE_SYSTEM = "system";
@@ -93,55 +90,16 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
      * @param userId The database path for this user
      * @return The database path string
      */
-    private static String dbNameForUser(Context context, int userId, String baseName) {
+    static String dbNameForUser(final int userId) {
+        // The owner gets the unadorned db name;
         if (userId == UserHandle.USER_SYSTEM) {
-            return context.getDatabasePath(baseName).getPath();
+            return DATABASE_NAME;
         } else {
             // Place the database in the user-specific data tree so that it's
             // cleaned up automatically when the user is deleted.
             File databaseFile = new File(
-                    Environment.getUserSystemDirectory(userId), baseName);
+                    Environment.getUserSystemDirectory(userId), DATABASE_NAME);
             return databaseFile.getPath();
-        }
-    }
-
-    /**
-     * Migrate db files (if needed).
-     */
-    public static void migrateDbFiles(Context context, int userId) {
-        final String dbPath = dbNameForUser(context, userId, DATABASE_NAME);
-        final String dbPathOld = dbNameForUser(context, userId, DATABASE_NAME_OLD);
-
-        // Only rename databases that we know we can write to later.
-        if (!FileUtils.isFileWritable(dbPathOld)) {
-            return;
-        }
-        if (FileUtils.fileExists(dbPath) && !FileUtils.delete(dbPath)) {
-            Log.e(TAG, "Unable to delete existing settings db file " + dbPath);
-            return;
-        }
-        if (!FileUtils.rename(dbPathOld, dbPath)) {
-            Log.e(TAG, "Found old settings db " + dbPathOld + " but could not rename it to "
-                    + dbPath);
-            return;
-        }
-        // Move any additional sqlite files that might exist.
-        // The list of suffixes is taken from fw/b SQLiteDatabase.java deleteDatabase().
-        final String[] suffixes = { "-journal", "-shm", "-wal" };
-        for (String s: suffixes) {
-            final String oldFile = dbPathOld + s;
-            final String newFile = dbPath + s;
-            if (!FileUtils.fileExists(oldFile)) {
-                continue;
-            }
-            if (FileUtils.fileExists(newFile) && !FileUtils.delete(newFile)) {
-                Log.e(TAG, "Unable to delete existing settings db file " + newFile);
-                continue;
-            }
-            if (!FileUtils.rename(oldFile, newFile)) {
-                Log.e(TAG, "Unable to rename existing settings db file " + oldFile + " to "
-                        + newFile);
-            }
         }
     }
 
@@ -151,7 +109,7 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
      * @param userId
      */
     public LineageDatabaseHelper(Context context, int userId) {
-        super(context, dbNameForUser(context, userId, DATABASE_NAME), null, DATABASE_VERSION);
+        super(context, dbNameForUser(userId), null, DATABASE_VERSION);
         mContext = context;
         mUserHandle = userId;
 
@@ -212,167 +170,62 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
         int upgradeVersion = oldVersion;
 
         if (upgradeVersion < 2) {
-            db.beginTransaction();
-            try {
-                loadSettings(db);
-                db.setTransactionSuccessful();
-            } finally {
-                db.endTransaction();
-            }
+            // Used to run loadSettings()
             upgradeVersion = 2;
         }
 
         if (upgradeVersion < 3) {
-            /* Was set LineageSettings.Secure.PROTECTED_COMPONENT_MANAGERS
-             * but this is no longer used
-             */
+            // Used to set LineageSettings.Secure.PROTECTED_COMPONENT_MANAGERS
             upgradeVersion = 3;
         }
 
         if (upgradeVersion < 4) {
-            /* Was set LineageSettings.Secure.LINEAGE_SETUP_WIZARD_COMPLETE
-             * but this is no longer used
-             */
+            // Used to set LineageSettings.Secure.LINEAGE_SETUP_WIZARD_COMPLETE
             upgradeVersion = 4;
         }
 
         if (upgradeVersion < 5) {
-            /* Was set LineageSettings.Global.WEATHER_TEMPERATURE_UNIT
-             * but this is no longer used
-             */
+            // Used to set LineageSettings.Global.WEATHER_TEMPERATURE_UNIT
             upgradeVersion = 5;
         }
 
         if (upgradeVersion < 6) {
-            /* Was move LineageSettings.Secure.DEV_FORCE_SHOW_NAVBAR to global
-             * but this is no longer used
-             */
+            // Used to move LineageSettings.Secure.DEV_FORCE_SHOW_NAVBAR to global
             upgradeVersion = 6;
         }
 
         if (upgradeVersion < 7) {
-            if (mUserHandle == UserHandle.USER_OWNER) {
-                db.beginTransaction();
-                SQLiteStatement stmt = null;
-                try {
-                    stmt = db.compileStatement("SELECT value FROM system WHERE name=?");
-                    stmt.bindString(1, LineageSettings.System.STATUS_BAR_CLOCK);
-                    long value = stmt.simpleQueryForLong();
-
-                    if (value != 0) {
-                        stmt = db.compileStatement("UPDATE system SET value=? WHERE name=?");
-                        stmt.bindLong(1, value - 1);
-                        stmt.bindString(2, LineageSettings.System.STATUS_BAR_CLOCK);
-                        stmt.execute();
-                    }
-                    db.setTransactionSuccessful();
-                } catch (SQLiteDoneException ex) {
-                    // LineageSettings.System.STATUS_BAR_CLOCK is not set
-                } finally {
-                    if (stmt != null) stmt.close();
-                    db.endTransaction();
-                }
-            }
+            // Used to migrate LineageSettings.System.STATUS_BAR_CLOCK
             upgradeVersion = 7;
         }
 
         if (upgradeVersion < 8) {
-            /* Was set LineageSettings.Secure.PROTECTED_COMPONENT_MANAGERS
-             * but this is no longer used
-             */
+            // Used to set LineageSettings.Secure.PROTECTED_COMPONENT_MANAGERS
             upgradeVersion = 8;
         }
 
         if (upgradeVersion < 9) {
-            if (mUserHandle == UserHandle.USER_OWNER) {
-                db.execSQL("UPDATE system SET value = '0' WHERE value IN ('10', '11') AND name IN ("
-                        + "'" + LineageSettings.System.KEY_HOME_LONG_PRESS_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_HOME_DOUBLE_TAP_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_MENU_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_MENU_LONG_PRESS_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_ASSIST_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_ASSIST_LONG_PRESS_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_APP_SWITCH_ACTION + "',"
-                        + "'" + LineageSettings.System.KEY_APP_SWITCH_LONG_PRESS_ACTION + "')");
-            }
+            // Used to migrate LineageSettings.System.KEY_* actions
             upgradeVersion = 9;
         }
 
         if (upgradeVersion < 10) {
-            if (mUserHandle == UserHandle.USER_OWNER) {
-                // Update STATUS_BAR_CLOCK
-                db.beginTransaction();
-                SQLiteStatement stmt = null;
-                try {
-                    stmt = db.compileStatement("SELECT value FROM system WHERE name=?");
-                    stmt.bindString(1, LineageSettings.System.STATUS_BAR_CLOCK);
-                    long value = stmt.simpleQueryForLong();
-
-                    if (value == 0) {
-                        stmt = db.compileStatement("UPDATE system SET value=? WHERE name=?");
-                        stmt.bindLong(1, 2);
-                        stmt.bindString(2, LineageSettings.System.STATUS_BAR_CLOCK);
-                        stmt.execute();
-                    }
-                    db.setTransactionSuccessful();
-                } catch (SQLiteDoneException ex) {
-                    // LineageSettings.System.STATUS_BAR_CLOCK is not set
-                } finally {
-                    if (stmt != null) stmt.close();
-                    db.endTransaction();
-                }
-            }
+            // Used to migrate LineageSettings.System.STATUS_BAR_CLOCK
             upgradeVersion = 10;
         }
 
         if (upgradeVersion < 11) {
-            /* Was move LineageSettings.Global.DEV_FORCE_SHOW_NAVBAR to system
-             * but this is no longer used
-             */
+            // Used to move LineageSettings.Global.DEV_FORCE_SHOW_NAVBAR to system
             upgradeVersion = 11;
         }
 
         if (upgradeVersion < 12) {
-            if (mUserHandle == UserHandle.USER_OWNER) {
-                db.beginTransaction();
-                SQLiteStatement stmt = null;
-                try {
-                    stmt = db.compileStatement("SELECT value FROM system WHERE name=?");
-                    stmt.bindString(1, LineageSettings.System.STATUS_BAR_BATTERY_STYLE);
-                    long value = stmt.simpleQueryForLong();
-
-                    long newValue = 0;
-                    switch ((int) value) {
-                        case 2:
-                            newValue = 1;
-                            break;
-                        case 5:
-                            newValue = 0;
-                            break;
-                        case 6:
-                            newValue = 2;
-                            break;
-                    }
-
-                    stmt = db.compileStatement("UPDATE system SET value=? WHERE name=?");
-                    stmt.bindLong(1, newValue);
-                    stmt.bindString(2, LineageSettings.System.STATUS_BAR_BATTERY_STYLE);
-                    stmt.execute();
-                    db.setTransactionSuccessful();
-                } catch (SQLiteDoneException ex) {
-                    // LineageSettings.System.STATUS_BAR_BATTERY_STYLE is not set
-                } finally {
-                    if (stmt != null) stmt.close();
-                    db.endTransaction();
-                }
-            }
+            // Used to migrate LineageSettings.System.STATUS_BAR_BATTERY_STYLE
             upgradeVersion = 12;
         }
 
         if (upgradeVersion < 13) {
-            /* Was used to migrate LineageSettings.Global.POWER_NOTIFICATIONS_RINGTONE,
-             * but this setting has been deprecated
-             */
+            // Used to migrate LineageSettings.Global.POWER_NOTIFICATIONS_RINGTONE
             upgradeVersion = 13;
         }
 
@@ -430,35 +283,41 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
         }
 
         if (upgradeVersion < 18) {
-            Integer oldSetting;
-            db.beginTransaction();
-            SQLiteStatement stmt = null;
-            try {
-                stmt = db.compileStatement("SELECT value FROM system WHERE name=?");
-                // Used to be LineageSettings.System.FINGERPRINT_WAKE_UNLOCK
-                stmt.bindString(1, "fingerprint_wake_unlock");
-                oldSetting = Integer.parseInt(stmt.simpleQueryForString());
+            Integer defaultValue = mContext.getResources().getBoolean(
+                    org.lineageos.platform.internal.R.bool.config_fingerprintWakeAndUnlock)
+                    ? 1 : 0; // Reversed since they're reversed again below
 
-                // Reverse 0/1 values, migrate 2 to 1
-                if (oldSetting.equals(0) || oldSetting.equals(2)) {
-                    oldSetting = 1;
-                } else if (oldSetting.equals(1)) {
-                    oldSetting = 0;
-                }
-            } catch (SQLiteDoneException ex) {
-                // LineageSettings.System.FINGERPRINT_WAKE_UNLOCK was not set,
-                // default to config_requireScreenOnToAuthEnabled value
-                oldSetting = mContext.getResources().getBoolean(
-                        com.android.internal.R.bool.config_requireScreenOnToAuthEnabled) ? 1 : 0;
-            } finally {
-                if (stmt != null) stmt.close();
-                db.endTransaction();
+            // Used to be LineageSettings.System.FINGERPRINT_WAKE_UNLOCK
+            Integer oldSetting = readIntegerSetting(db, LineageTableNames.TABLE_SYSTEM,
+                    "fingerprint_wake_unlock", defaultValue);
+
+            // Reverse 0/1 values, migrate 2 to 1
+            if (oldSetting.equals(0) || oldSetting.equals(2)) {
+                oldSetting = 1;
+            } else if (oldSetting.equals(1)) {
+                oldSetting = 0;
             }
+
+            // Previously Settings.Secure.SFPS_REQUIRE_SCREEN_ON_TO_AUTH_ENABLED
             Settings.Secure.putInt(mContext.getContentResolver(),
-                    Settings.Secure.SFPS_REQUIRE_SCREEN_ON_TO_AUTH_ENABLED,
+                    "sfps_require_screen_on_to_auth_enabled",
                     oldSetting);
             upgradeVersion = 18;
         }
+
+        if (upgradeVersion < 19) {
+            // Set default value based on config_fingerprintWakeAndUnlock
+            boolean fingerprintWakeAndUnlock = mContext.getResources().getBoolean(
+                    org.lineageos.platform.internal.R.bool.config_fingerprintWakeAndUnlock);
+            // Previously Settings.Secure.SFPS_REQUIRE_SCREEN_ON_TO_AUTH_ENABLED
+            Integer oldSetting = Settings.Secure.getInt(mContext.getContentResolver(),
+                    "sfps_require_screen_on_to_auth_enabled", fingerprintWakeAndUnlock ? 0 : 1);
+            // Flip value
+            Settings.Secure.putInt(mContext.getContentResolver(),
+                    Settings.Secure.SFPS_PERFORMANT_AUTH_ENABLED, oldSetting.equals(1) ? 0 : 1);
+            upgradeVersion = 19;
+        }
+
         // *** Remember to update DATABASE_VERSION above!
         if (upgradeVersion != newVersion) {
             Log.wtf(TAG, "warning: upgrading settings database to version "
@@ -545,6 +404,9 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
 
             loadBooleanSetting(stmt, LineageSettings.Secure.VOLUME_PANEL_ON_LEFT,
                     R.bool.def_volume_panel_on_left);
+
+            loadBooleanSetting(stmt, LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER,
+                    R.bool.def_qs_show_brightness_slider);
         } finally {
             if (stmt != null) stmt.close();
         }
@@ -588,6 +450,9 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
 
             loadIntegerSetting(stmt, LineageSettings.System.STATUS_BAR_CLOCK,
                     R.integer.def_clock_position);
+
+            loadBooleanSetting(stmt, LineageSettings.System.LOCKSCREEN_ROTATION,
+                    R.bool.def_lockscreen_rotation);
 
             if (mContext.getResources().getBoolean(R.bool.def_notification_pulse_custom_enable)) {
                 loadStringSetting(stmt, LineageSettings.System.NOTIFICATION_LIGHT_PULSE_CUSTOM_VALUES,
@@ -711,5 +576,120 @@ public class LineageDatabaseHelper extends SQLiteOpenHelper{
         stmt.bindString(1, key);
         stmt.bindString(2, value.toString());
         stmt.execute();
+    }
+
+    private static void ensureTableIsValid(final String tableName) {
+        switch (tableName) {
+            case LineageTableNames.TABLE_GLOBAL:
+            case LineageTableNames.TABLE_SECURE:
+            case LineageTableNames.TABLE_SYSTEM:
+                break;
+            default:
+                throw new IllegalArgumentException(
+                        "Table '" + tableName + "' is not a valid Lineage database table");
+        }
+    }
+
+    /**
+     * Read a setting from a given database table.
+     * @param db The {@link SQLiteDatabase} to read from.
+     * @param tableName The name of the database table to read from.
+     * @param name The name of the setting to read.
+     * @param defaultValue the value to return if setting cannot be read.
+     */
+    private static String readSetting(final SQLiteDatabase db, final String tableName,
+            final String name, final String defaultValue) {
+        ensureTableIsValid(tableName);
+        SQLiteStatement stmt = null;
+        try {
+            stmt = db.compileStatement("SELECT value FROM " + tableName + " WHERE name=?");
+            stmt.bindString(1, name);
+            return stmt.simpleQueryForString();
+        } catch (SQLiteDoneException ex) {
+            // Value is not set
+        } finally {
+            if (stmt != null) stmt.close();
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Read an Integer setting from a given database table.
+     * @param db The {@link SQLiteDatabase} to read from.
+     * @param tableName The name of the database table to read from.
+     * @param name The name of the setting to read.
+     * @param defaultValue the value to return if setting cannot be read or is not an Integer.
+     */
+    private static Integer readIntegerSetting(final SQLiteDatabase db, final String tableName,
+            final String name, final Integer defaultValue) {
+        ensureTableIsValid(tableName);
+        final String value = readSetting(db, tableName, name, null);
+        try {
+            return value != null ? Integer.parseInt(value) : defaultValue;
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Read a Long setting from a given database table.
+     * @param db The {@link SQLiteDatabase} to read from.
+     * @param tableName The name of the database table to read from.
+     * @param name The name of the setting to read.
+     * @param defaultValue the value to return if setting cannot be read or is not a Long.
+     */
+    private static Long readLongSetting(final SQLiteDatabase db, final String tableName,
+            final String name, final Long defaultValue) {
+        ensureTableIsValid(tableName);
+        final String value = readSetting(db, tableName, name, null);
+        try {
+            return value != null ? Long.parseLong(value) : defaultValue;
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Write a setting to a given database table, overriding existing values
+     * @param db The {@link SQLiteDatabase} to write to.
+     * @param tableName The name of the database table to write to.
+     * @param name The name of the setting to write.
+     * @param value the value of the setting to write.
+     */
+    private static void writeSetting(final SQLiteDatabase db, final String tableName,
+            final String name, final Object value) throws SQLiteDoneException {
+        writeSetting(db, tableName, name, value, true /* replaceIfExists */);
+    }
+
+    /**
+     * Write a setting to a given database table, only if it doesn't already exist
+     * @param db The {@link SQLiteDatabase} to write to.
+     * @param tableName The name of the database table to write to.
+     * @param name The name of the setting to write.
+     * @param value the value of the setting to write.
+     */
+    private static void writeSettingIfNotPresent(final SQLiteDatabase db, final String tableName,
+            final String name, final Object value) throws SQLiteDoneException {
+        writeSetting(db, tableName, name, value, false /* replaceIfExists */);
+    }
+
+    /** Write a setting to a given database table. */
+    private static void writeSetting(final SQLiteDatabase db, final String tableName,
+            final String name, final Object value, final boolean replaceIfExists)
+            throws SQLiteDoneException {
+        ensureTableIsValid(tableName);
+        SQLiteStatement stmt = null;
+        try {
+            stmt = db.compileStatement("INSERT OR " + (replaceIfExists ? "REPLACE" : "IGNORE")
+                    + " INTO " + tableName + "(name,value) VALUES(?,?);");
+            stmt.bindString(1, name);
+            stmt.bindString(2, Objects.toString(value));
+            stmt.execute();
+        } catch (SQLiteDoneException ex) {
+            // Value is not set
+            throw ex;
+        } finally {
+            if (stmt != null) stmt.close();
+        }
     }
 }
