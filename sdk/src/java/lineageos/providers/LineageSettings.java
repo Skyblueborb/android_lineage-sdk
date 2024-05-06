@@ -1748,6 +1748,17 @@ public final class LineageSettings {
                 sBooleanValidator;
 
         /**
+         * Whether to always show the bluetooth icon
+         * 0 = 0ff, 1 = on
+         */
+        public static final String BLUETOOTH_ALWAYS_SHOW_ICON =
+                "bluetooth_always_show_icon";
+
+        /** @hide */
+        public static final Validator BLUETOOTH_ALWAYS_SHOW_ICON_VALIDATOR =
+                sBooleanValidator;
+
+        /**
          * Whether to scramble a pin unlock layout
          * 0 = 0ff, 1 = on
          */
@@ -2412,6 +2423,7 @@ public final class LineageSettings {
             VALIDATORS.put(NAVBAR_LEFT_IN_LANDSCAPE, NAVBAR_LEFT_IN_LANDSCAPE_VALIDATOR);
             VALIDATORS.put(T9_SEARCH_INPUT_LOCALE, T9_SEARCH_INPUT_LOCALE_VALIDATOR);
             VALIDATORS.put(BLUETOOTH_ACCEPT_ALL_FILES, BLUETOOTH_ACCEPT_ALL_FILES_VALIDATOR);
+            VALIDATORS.put(BLUETOOTH_ALWAYS_SHOW_ICON, BLUETOOTH_ALWAYS_SHOW_ICON_VALIDATOR);
             VALIDATORS.put(LOCKSCREEN_PIN_SCRAMBLE_LAYOUT,
                     LOCKSCREEN_PIN_SCRAMBLE_LAYOUT_VALIDATOR);
             VALIDATORS.put(LOCKSCREEN_ROTATION, LOCKSCREEN_ROTATION_VALIDATOR);
